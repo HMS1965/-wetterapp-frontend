@@ -70,11 +70,11 @@ export default function WeatherChat({ profile, onBack }) {
       const pcm = new Int16Array(arrayBuffer, 44);
 
       // Aufweck-Rampe: hält Bluetooth-Kopfhörer wach, verhindert Satzanfang-Cutoff
-      const leadInSamples = Math.floor(24000 * 0.8);
+      const leadInSamples = Math.floor(24000 * 1.2);
       const audioBuffer = ctx.createBuffer(1, leadInSamples + pcm.length, 24000);
       const channel = audioBuffer.getChannelData(0);
       for (let i = 0; i < leadInSamples; i++) {
-        channel[i] = Math.sin(2 * Math.PI * 80 * i / 24000) * 0.006;
+        channel[i] = Math.sin(2 * Math.PI * 80 * i / 24000) * 0.02;
       }
       for (let i = 0; i < pcm.length; i++) {
         channel[leadInSamples + i] = pcm[i] / 32768;
