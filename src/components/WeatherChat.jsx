@@ -74,7 +74,7 @@ export default function WeatherChat({ profile, onBack }) {
       const audioBuffer = ctx.createBuffer(1, leadInSamples + pcm.length, 24000);
       const channel = audioBuffer.getChannelData(0);
       for (let i = 0; i < leadInSamples; i++) {
-        channel[i] = Math.sin(2 * Math.PI * 80 * i / 24000) * 0.02;
+        channel[i] = Math.sin(2 * Math.PI * 80 * i / 24000) * 0.08;
       }
       for (let i = 0; i < pcm.length; i++) {
         channel[leadInSamples + i] = pcm[i] / 32768;
