@@ -45,7 +45,9 @@ export default function WeatherChat({ profile, onBack }) {
       .replace(/ca\./gi, 'circa')
       .replace(/bzw\./gi, 'beziehungsweise')
       .replace(/z\.B\./gi, 'zum Beispiel')
-      .replace(/u\.a\./gi, 'unter anderem');
+      .replace(/u\.a\./gi, 'unter anderem')
+      .replace(/Duisburg/gi, 'Duis-burg')
+      .replace(/NRW/g, 'Nordrhein-Westfalen');
   }
 
   async function speak(text) {
