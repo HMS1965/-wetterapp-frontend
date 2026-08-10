@@ -3,7 +3,28 @@
   "short_name": "Wetter",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f0f1a",
-  "theme_color": "#1a1a2e",
-  "icons": []
+  "background_color": "#a8c8e8",
+  "theme_color": "#060f1e",
+  "icons": [
+    {
+      "src": "/icons/fahrtenrekorder.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Fahrt aufzeichnen",
+      "short_name": "Fahrt",
+      "url": "/?fahrt",
+      "icons": [
+        {
+          "src": "/icons/fahrtenrekorder.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
 }

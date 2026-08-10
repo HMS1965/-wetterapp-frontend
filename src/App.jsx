@@ -4,9 +4,19 @@ import WeatherChat from './components/WeatherChat.jsx';
 import DriveApp from './components/DriveApp.jsx';
 import { Car } from 'lucide-react';
 
+/**
+ * Eine Verknüpfung auf ".../?fahrt" startet direkt im Fahrtenrekorder.
+ * So lässt sich dafür ein eigenes Symbol auf den Startbildschirm legen.
+ */
+function initialMode() {
+  if (typeof window === 'undefined') return 'weather';
+  const target = `${window.location.search}${window.location.hash}`.toLowerCase();
+  return /fahrt|route|drive/.test(target) ? 'drive' : 'weather';
+}
+
 export default function App() {
   const [profile, setProfile] = useState(null);
-  const [mode, setMode] = useState('weather');
+  const [mode, setMode] = useState(initialMode);
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh' }}>
