@@ -9,6 +9,26 @@ import { newTripId } from './tripStore.js';
  *
  * Mehrere <trkseg> bedeuten Aufzeichnungslücken; die bleiben als solche erhalten.
  */
+/** Direktes <name>-Kind eines Elements — nicht das eines Unterelements. */
+function childName(element) {
+  if (!element) return null;
+  for (const child of element.children) {
+    if (child.tagName.replace(/^.*:/, '') === 'name') return child.textContent?.trim() || null;
+  }
+  return null;
+}
+
+/**
+ * Titel der Aufzeichnung. Gezielt aus <trk> oder <metadata>, denn viele Apps
+ * schreiben unter <metadata> auch <author><name> — das ist der Kontoname des
+ * Nutzers und nicht der Name der Tour.
+ */
+function trackName(doc) {
+  return childName(doc.getElementsByTagName('trk')[0])
+    || childName(doc.getElementsByTagName('metadata')[0])
+    || null;
+}
+
 export function parseGpx(xmlText, { fileName = 'Import' } = {}) {
   const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
   if (doc.querySelector('parsererror')) {
@@ -66,7 +86,7 @@ export function parseGpx(xmlText, { fileName = 'Import' } = {}) {
   const startedAt = points[0].t;
   const endedAt = points[points.length - 1].t;
   const marked = markGaps(points);
-  const name = doc.getElementsByTagName('name')[0]?.textContent?.trim();
+  const name = trackName(doc);
 
   const trip = {
     id: newTripId(),
