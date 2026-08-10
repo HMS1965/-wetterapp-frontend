@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, CircleDot, Route } from 'lucide-react';
+import { ChevronLeft, CircleDot, GitCompareArrows, Route } from 'lucide-react';
 import useTripRecorder from '../hooks/useTripRecorder.js';
 import TripRecorder from './TripRecorder.jsx';
 import TripList from './TripList.jsx';
 import TripDetail from './TripDetail.jsx';
+import RouteCompare from './RouteCompare.jsx';
 import { deleteTrip, loadTrips, renameTrip } from '../services/tripStore.js';
 import { glass, panel } from './driveUi.js';
 
@@ -68,14 +69,21 @@ export default function DriveApp({ onBack }) {
             style={{ ...s.tab, ...(tab === 'trips' ? s.tabActive : null) }}
             onClick={() => { setTab('trips'); setOpenId(null); refresh(); }}
           >
-            <Route size={16} /> Fahrtenbuch
+            <Route size={16} /> Fahrten
+          </button>
+          <button
+            style={{ ...s.tab, ...(tab === 'compare' ? s.tabActive : null) }}
+            onClick={() => { setTab('compare'); refresh(); }}
+          >
+            <GitCompareArrows size={16} /> Vergleich
           </button>
         </div>
 
         {tab === 'record' && <TripRecorder recorder={recorder} onFinished={handleFinished} />}
+        {tab === 'compare' && <RouteCompare trips={trips} />}
         {tab === 'trips' && (openTrip
           ? <TripDetail trip={openTrip} onBack={() => setOpenId(null)} onRename={handleRename} onDelete={handleDelete} />
-          : <TripList trips={trips} onOpen={t => setOpenId(t.id)} />
+          : <TripList trips={trips} onOpen={t => setOpenId(t.id)} onImported={refresh} />
         )}
       </div>
     </div>
@@ -114,7 +122,7 @@ const s = {
     flex: 1,
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
     background: 'transparent', border: 'none', borderRadius: '11px',
-    padding: '0.6rem 0.75rem', fontSize: '0.9rem', fontWeight: 600,
+    padding: '0.6rem 0.5rem', fontSize: '0.85rem', fontWeight: 600,
     color: 'rgba(30,70,120,0.65)', cursor: 'pointer', fontFamily: 'inherit',
     transition: 'background 0.15s, color 0.15s',
   },

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { gapFlags } from '../services/geoUtils.js';
 
 const VIEW = 1000;
 
@@ -9,12 +10,37 @@ function project(p) {
   return { x: p.lon, y: -Math.log(Math.tan(Math.PI / 4 + rad / 2)) * (180 / Math.PI) };
 }
 
+/** Zerlegt eine Spur an Aufzeichnungslücken, damit sie nicht als Gerade durchgezogen wird. */
+function splitAtGaps(points) {
+  const flags = gapFlags(points);
+  const chunks = [];
+  let current = [];
+  for (let i = 0; i < points.length; i++) {
+    if (flags[i]) {
+      chunks.push(current);
+      current = [];
+    }
+    current.push(points[i]);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 /**
- * Zeichnet die aufgezeichnete Strecke als Linie — ohne Kartenkacheln,
+ * Zeichnet eine oder mehrere Strecken als Linien — ohne Kartenkacheln,
  * damit die Ansicht auch ohne Netz funktioniert.
- * `compact` ist für kleine Vorschauen: dickere Linien, keine Legende.
+ *
+ * `tracks` überlagert mehrere Fahrten zum Vergleich; `points` ist die
+ * Kurzform für eine einzelne Fahrt. `compact` ist für kleine Vorschauen.
  */
-export default function RouteMap({ points = [], height = 240, live = false, compact = false }) {
+export default function RouteMap({
+  points = null, tracks = null, height = 240, live = false, compact = false,
+}) {
+  const list = useMemo(
+    () => (tracks && tracks.length > 0 ? tracks : points ? [{ points, color: '#2563eb' }] : []),
+    [tracks, points]
+  );
+
   // Unten mehr Luft lassen, damit die Legende die Route nicht überdeckt
   const pad = compact ? { t: 90, r: 90, b: 90, l: 90 } : { t: 45, r: 45, b: 150, l: 45 };
   const stroke = compact
@@ -22,15 +48,14 @@ export default function RouteMap({ points = [], height = 240, live = false, comp
     : { halo: 22, line: 12, markerOuter: 20, markerInner: 13 };
 
   const shape = useMemo(() => {
-    if (points.length === 0) return null;
+    const all = list.flatMap(t => t.points || []);
+    if (all.length === 0) return null;
 
-    const projected = points.map(project);
-    const xs = projected.map(p => p.x);
-    const ys = projected.map(p => p.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
+    const projected = all.map(project);
+    const minX = Math.min(...projected.map(p => p.x));
+    const maxX = Math.max(...projected.map(p => p.x));
+    const minY = Math.min(...projected.map(p => p.y));
+    const maxY = Math.max(...projected.map(p => p.y));
 
     const spanX = maxX - minX;
     const spanY = maxY - minY;
@@ -44,18 +69,39 @@ export default function RouteMap({ points = [], height = 240, live = false, comp
 
     const offsetX = pad.l + (availW - spanX * scale) / 2;
     const offsetY = pad.t + (availH - spanY * scale) / 2;
-
-    const mapped = projected.map(p => ({
-      x: offsetX + (p.x - minX) * scale,
-      y: offsetY + (p.y - minY) * scale,
-    }));
-
-    return {
-      d: mapped.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
-      start: mapped[0],
-      end: mapped[mapped.length - 1],
+    const toXY = p => {
+      const q = project(p);
+      return { x: offsetX + (q.x - minX) * scale, y: offsetY + (q.y - minY) * scale };
     };
-  }, [points, pad.t, pad.r, pad.b, pad.l]);
+    const toPath = chunk => chunk
+      .map(toXY)
+      .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+      .join(' ');
+
+    const drawn = list
+      .filter(t => (t.points || []).length > 0)
+      .map(t => {
+        const chunks = splitAtGaps(t.points);
+        return {
+          color: t.color || '#2563eb',
+          overlay: !!t.overlay,
+          width: t.width ?? 1,
+          opacity: t.opacity ?? null,
+          paths: chunks.filter(c => c.length > 1).map(toPath),
+          // Lücken als gestrichelte Verbindung: sichtbar, aber klar als Schätzung erkennbar
+          bridges: chunks.slice(1).map((chunk, i) => {
+            const a = toXY(chunks[i][chunks[i].length - 1]);
+            const b = toXY(chunk[0]);
+            return `M${a.x.toFixed(1)},${a.y.toFixed(1)} L${b.x.toFixed(1)},${b.y.toFixed(1)}`;
+          }),
+          start: toXY(t.points[0]),
+          end: toXY(t.points[t.points.length - 1]),
+          single: t.points.length === 1,
+        };
+      });
+
+    return { drawn };
+  }, [list, pad.t, pad.r, pad.b, pad.l]);
 
   if (!shape) {
     return (
@@ -65,28 +111,48 @@ export default function RouteMap({ points = [], height = 240, live = false, comp
     );
   }
 
-  const single = points.length === 1;
+  const multi = list.filter(t => !t.overlay).length > 1;
   const endColor = live ? '#2563eb' : '#dc2626';
 
   return (
     <div style={{ ...s.wrap, height }}>
       <svg viewBox={`0 0 ${VIEW} ${VIEW}`} preserveAspectRatio="xMidYMid meet" style={s.svg}>
-        {!single && (
-          <>
-            <path d={shape.d} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={stroke.halo}
-              strokeLinecap="round" strokeLinejoin="round" />
-            <path d={shape.d} fill="none" stroke="#2563eb" strokeWidth={stroke.line}
-              strokeLinecap="round" strokeLinejoin="round" />
-            {stroke.markerOuter > 0 && <circle cx={shape.start.x} cy={shape.start.y} r={stroke.markerOuter} fill="#fff" />}
-            <circle cx={shape.start.x} cy={shape.start.y} r={stroke.markerInner} fill="#16a34a" />
-          </>
-        )}
-        {stroke.markerOuter > 0 && <circle cx={shape.end.x} cy={shape.end.y} r={stroke.markerOuter} fill="#fff" />}
-        <circle cx={shape.end.x} cy={shape.end.y} r={stroke.markerInner} fill={endColor}>
-          {live && <animate attributeName="r" values={`${stroke.markerInner};${stroke.markerInner + 4};${stroke.markerInner}`} dur="1.6s" repeatCount="indefinite" />}
-        </circle>
+        {shape.drawn.map((track, i) => (
+          <g key={i}>
+            {!multi && track.paths.map((d, j) => (
+              <path key={`h${j}`} d={d} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={stroke.halo}
+                strokeLinecap="round" strokeLinejoin="round" />
+            ))}
+            {track.bridges.map((d, j) => (
+              <path key={`b${j}`} d={d} fill="none" stroke={track.color} strokeWidth={stroke.line * 0.6 * track.width}
+                strokeDasharray={`${stroke.line * 1.5} ${stroke.line * 1.5}`} opacity="0.5" strokeLinecap="round" />
+            ))}
+            {track.paths.map((d, j) => (
+              <path key={`p${j}`} d={d} fill="none" stroke={track.color} strokeWidth={stroke.line * track.width}
+                strokeLinecap="round" strokeLinejoin="round" opacity={track.opacity ?? (multi ? 0.85 : 1)} />
+            ))}
+          </g>
+        ))}
+
+        {!multi && shape.drawn.map((track, i) => (
+          <g key={`m${i}`}>
+            {!track.single && (
+              <>
+                {stroke.markerOuter > 0 && <circle cx={track.start.x} cy={track.start.y} r={stroke.markerOuter} fill="#fff" />}
+                <circle cx={track.start.x} cy={track.start.y} r={stroke.markerInner} fill="#16a34a" />
+              </>
+            )}
+            {stroke.markerOuter > 0 && <circle cx={track.end.x} cy={track.end.y} r={stroke.markerOuter} fill="#fff" />}
+            <circle cx={track.end.x} cy={track.end.y} r={stroke.markerInner} fill={endColor}>
+              {live && <animate attributeName="r"
+                values={`${stroke.markerInner};${stroke.markerInner + 4};${stroke.markerInner}`}
+                dur="1.6s" repeatCount="indefinite" />}
+            </circle>
+          </g>
+        ))}
       </svg>
-      {!compact && !single && (
+
+      {!compact && !multi && shape.drawn[0] && !shape.drawn[0].single && (
         <div style={s.legend}>
           <span style={s.legendItem}><span style={{ ...s.dot, background: '#16a34a' }} />Start</span>
           <span style={s.legendItem}><span style={{ ...s.dot, background: endColor }} />{live ? 'Aktuell' : 'Ziel'}</span>

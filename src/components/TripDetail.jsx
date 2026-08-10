@@ -85,7 +85,15 @@ export default function TripDetail({ trip, onBack, onRename, onDelete }) {
         </button>
       </div>
 
-      <p style={s.hint}>{st.pointCount} aufgezeichnete Punkte</p>
+      {st.gaps.length > 0 && (
+        <p style={s.gapNote}>
+          {st.gaps.length} {st.gaps.length === 1 ? 'Aufzeichnungslücke' : 'Aufzeichnungslücken'} —
+          {' '}{formatDistance(st.gapMeters)} sind als Luftlinie überbrückt (gestrichelt).
+          {' '}Das passiert, wenn die App in den Hintergrund gerät.
+        </p>
+      )}
+
+      <p style={s.hint}>{st.pointCount} Punkte in der Spur</p>
     </div>
   );
 }
@@ -157,4 +165,9 @@ const s = {
     padding: '0.6rem 1rem', fontSize: '0.85rem',
   },
   hint: { fontSize: '0.75rem', color: 'rgba(30,70,120,0.5)', textAlign: 'center' },
+  gapNote: {
+    fontSize: '0.78rem', color: '#b45309', lineHeight: 1.45,
+    background: 'rgba(180,83,9,0.09)', border: '1px solid rgba(180,83,9,0.2)',
+    borderRadius: '12px', padding: '0.6rem 0.8rem',
+  },
 };

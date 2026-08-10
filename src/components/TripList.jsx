@@ -1,7 +1,9 @@
-import { ChevronRight, Route } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ChevronRight, Download, Route, Upload } from 'lucide-react';
 import RouteMap from './RouteMap.jsx';
-import { formatDistance, formatDuration, formatDateTime, tripStats } from '../services/geoUtils.js';
-import { softCard, label, value } from './driveUi.js';
+import { downloadFile, formatDistance, formatDuration, formatDateTime, tripStats } from '../services/geoUtils.js';
+import { exportAll, importAll } from '../services/tripStore.js';
+import { softCard, ghostButton, label, value } from './driveUi.js';
 
 function tripLabel(trip) {
   if (trip.title) return trip.title;
@@ -9,13 +11,53 @@ function tripLabel(trip) {
   return `Fahrt vom ${formatDateTime(trip.startedAt)}`;
 }
 
-export default function TripList({ trips, onOpen }) {
+export default function TripList({ trips, onOpen, onImported }) {
+  const fileRef = useRef(null);
+  const [note, setNote] = useState(null);
+
+  function handleExport() {
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadFile(`fahrtenbuch-${stamp}.json`, exportAll(), 'application/json');
+  }
+
+  async function handleImport(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const result = importAll(await file.text());
+      setNote(result.added === 0
+        ? 'Alle Fahrten aus der Sicherung waren schon vorhanden.'
+        : `${result.added} ${result.added === 1 ? 'Fahrt' : 'Fahrten'} eingelesen.`);
+      onImported?.();
+    } catch (err) {
+      setNote(err.message);
+    }
+  }
+
+  const backup = (
+    <div style={s.backup}>
+      <button style={s.backupBtn} onClick={handleExport} disabled={trips.length === 0}>
+        <Download size={15} /> Sichern
+      </button>
+      <button style={s.backupBtn} onClick={() => fileRef.current?.click()}>
+        <Upload size={15} /> Einlesen
+      </button>
+      <input ref={fileRef} type="file" accept="application/json,.json"
+        onChange={handleImport} style={{ display: 'none' }} />
+    </div>
+  );
+
   if (trips.length === 0) {
     return (
-      <div style={s.empty}>
-        <Route size={32} style={{ opacity: 0.4 }} />
-        <p style={s.emptyTitle}>Noch keine Fahrten</p>
-        <p style={s.emptyText}>Starte eine Aufzeichnung — die gefahrene Strecke landet danach hier.</p>
+      <div style={s.wrap}>
+        <div style={s.empty}>
+          <Route size={32} style={{ opacity: 0.4 }} />
+          <p style={s.emptyTitle}>Noch keine Fahrten</p>
+          <p style={s.emptyText}>Starte eine Aufzeichnung — die gefahrene Strecke landet danach hier.</p>
+        </div>
+        {backup}
+        {note && <p style={s.note}>{note}</p>}
       </div>
     );
   }
@@ -63,6 +105,12 @@ export default function TripList({ trips, onOpen }) {
           </button>
         );
       })}
+
+      {backup}
+      {note && <p style={s.note}>{note}</p>}
+      <p style={s.backupHint}>
+        Die Fahrten liegen nur in diesem Browser. Sichere sie, bevor du Browserdaten löschst oder das Gerät wechselst.
+      </p>
     </div>
   );
 }
@@ -85,6 +133,15 @@ const s = {
   },
   itemMeta: { fontSize: '0.78rem', color: 'rgba(30,70,120,0.6)' },
   itemStats: { fontSize: '0.85rem', fontWeight: 600, color: 'rgba(20,60,110,0.85)' },
+  backup: { display: 'flex', gap: '0.5rem', marginTop: '0.3rem' },
+  backupBtn: {
+    ...ghostButton,
+    flex: 1,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+    padding: '0.6rem 0.8rem', fontSize: '0.85rem',
+  },
+  backupHint: { fontSize: '0.72rem', color: 'rgba(30,70,120,0.55)', lineHeight: 1.45, textAlign: 'center' },
+  note: { fontSize: '0.8rem', color: '#1d4ed8', textAlign: 'center' },
   empty: {
     ...softCard,
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem',

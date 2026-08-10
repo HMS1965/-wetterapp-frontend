@@ -21,22 +21,64 @@ export function pathLength(points) {
   return total;
 }
 
+/** Richtung von a nach b in Grad (0 = Nord). */
+export function bearing(a, b) {
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/** Kleinster Winkel zwischen zwei Richtungen (0–180°). */
+export function bearingDelta(a, b) {
+  const diff = Math.abs(a - b) % 360;
+  return diff > 180 ? 360 - diff : diff;
+}
+
 /**
  * Entscheidet, ob ein neuer GPS-Punkt zur Route gehört.
  * Filtert Messrauschen im Stand und offensichtliche Ausreißer.
+ *
+ * Der Mindestabstand wächst mit dem Tempo: auf der Autobahn genügt rund alle
+ * zwei Sekunden ein Punkt, in der Stadt braucht es dichtere Punkte. Ohne das
+ * käme eine 250-km-Fahrt auf über 20.000 Punkte und sprengt den Speicher.
+ * `prev` ist der Punkt vor `last` — daraus erkennen wir Kurven, die trotz
+ * kurzem Abstand aufgezeichnet werden müssen.
  */
-export function shouldKeepPoint(last, next, { minDistance = 12, maxAccuracy = 60, maxSpeedMps = 70 } = {}) {
+export function shouldKeepPoint(last, next, {
+  minDistance = 12,
+  maxDistance = 80,
+  intervalSec = 2,
+  maxAccuracy = 60,
+  maxSpeedMps = 70,
+  turnDegrees = 25,
+  prev = null,
+} = {}) {
   if (next.accuracy != null && next.accuracy > maxAccuracy) return false;
   if (!last) return true;
 
   const dist = distanceMeters(last, next);
-  if (dist < minDistance) return false;
-
   const dt = (next.t - last.t) / 1000;
+
   // Sprung auf einen physikalisch unmöglichen Punkt (GPS-Teleport) verwerfen
   if (dt > 0 && dist / dt > maxSpeedMps) return false;
 
-  return true;
+  const speed = typeof next.speed === 'number' && next.speed >= 0
+    ? next.speed
+    : dt > 0 ? dist / dt : 0;
+  const threshold = Math.min(maxDistance, Math.max(minDistance, speed * intervalSec));
+
+  if (dist >= threshold) return true;
+
+  // Abbiegevorgänge sind für den Routenvergleich das Wichtigste — die
+  // dürfen nicht am Mindestabstand scheitern.
+  if (prev && dist >= minDistance && bearingDelta(bearing(prev, last), bearing(last, next)) >= turnDegrees) {
+    return true;
+  }
+
+  return false;
 }
 
 /** Längere Lücken (Pause, Signalverlust) taugen nicht zur Tempo-Messung. */
@@ -53,25 +95,80 @@ export function segmentSpeed(a, b) {
   return distanceMeters(a, b) / dt;
 }
 
+/** Ab dieser Pause zwischen zwei Punkten gilt die Aufzeichnung als unterbrochen. */
+export const GAP_MS = 60000;
+
+/**
+ * Unterbrechungen der Aufzeichnung — etwa weil der Browser die App in den
+ * Hintergrund geschickt hat. Sie werden ausgewiesen statt stillschweigend
+ * als Luftlinie durchgezogen.
+ *
+ * Ein `gapMs`-Vermerk am Punkt hat Vorrang: In der archivierten, ausgedünnten
+ * Spur liegen auch reguläre Punkte auf langen Geraden weit auseinander, ohne
+ * dass die Aufzeichnung je unterbrochen war.
+ */
+export function findGaps(points, gapMs = GAP_MS) {
+  const flags = gapFlags(points, gapMs);
+  const gaps = [];
+
+  for (let i = 1; i < points.length; i++) {
+    if (!flags[i]) continue;
+    gaps.push({
+      index: i,
+      ms: points[i].gapMs ?? points[i].t - points[i - 1].t,
+      meters: distanceMeters(points[i - 1], points[i]),
+    });
+  }
+  return gaps;
+}
+
+/**
+ * Pro Punkt: Lag davor eine Aufzeichnungslücke? Einzige Quelle der Wahrheit
+ * für Statistik und Kartendarstellung.
+ */
+export function gapFlags(points, gapMs = GAP_MS) {
+  const marked = points.some(p => p.gapMs != null);
+  return points.map((p, i) => {
+    if (i === 0) return false;
+    const dt = marked ? (p.gapMs ?? 0) : p.t - points[i - 1].t;
+    return dt > gapMs;
+  });
+}
+
+/** Vermerkt an jedem Punkt, ob davor eine Aufzeichnungslücke lag. */
+export function markGaps(points, gapMs = GAP_MS) {
+  return points.map((p, i) => {
+    if (i === 0) return { ...p, gapMs: 0 };
+    const dt = points[i].t - points[i - 1].t;
+    return { ...p, gapMs: dt > gapMs ? dt : 0 };
+  });
+}
+
 /** Fahrtstatistik aus den aufgezeichneten Punkten. */
 export function tripStats(trip) {
   const points = trip?.points ?? [];
-  const distance = pathLength(points);
+  // Beim Abschluss aus den Rohdaten berechnet — die archivierte Spur ist
+  // für den Speicher vereinfacht und läge sonst leicht darunter.
+  const distance = trip?.distanceM ?? pathLength(points);
   const startedAt = trip?.startedAt ?? points[0]?.t ?? null;
   const endedAt = trip?.endedAt ?? points[points.length - 1]?.t ?? null;
   const movingMs = trip?.movingMs ?? (startedAt && endedAt ? endedAt - startedAt : 0);
   const avgSpeed = movingMs > 0 ? distance / (movingMs / 1000) : 0;
 
-  let maxSpeed = 0;
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i];
-    if (typeof p.speed === 'number' && p.speed >= 0) {
-      maxSpeed = Math.max(maxSpeed, p.speed);
-    } else if (i > 0) {
-      const speed = segmentSpeed(points[i - 1], p);
-      if (speed != null) maxSpeed = Math.max(maxSpeed, speed);
+  let maxSpeed = trip?.maxSpeedMps ?? 0;
+  if (trip?.maxSpeedMps == null) {
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      if (typeof p.speed === 'number' && p.speed >= 0) {
+        maxSpeed = Math.max(maxSpeed, p.speed);
+      } else if (i > 0) {
+        const speed = segmentSpeed(points[i - 1], p);
+        if (speed != null) maxSpeed = Math.max(maxSpeed, speed);
+      }
     }
   }
+
+  const gaps = findGaps(points);
 
   return {
     distance,
@@ -81,6 +178,8 @@ export function tripStats(trip) {
     startedAt,
     endedAt,
     pointCount: points.length,
+    gaps,
+    gapMeters: gaps.reduce((sum, g) => sum + g.meters, 0),
   };
 }
 
