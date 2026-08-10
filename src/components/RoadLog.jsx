@@ -1,7 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
-import { Copy, ListOrdered, RefreshCw, X } from 'lucide-react';
-import { describeRoute, segmentsToText } from '../services/roadNaming.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Copy, CornerUpLeft, CornerUpRight, ListOrdered, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { describeRoute, estimateRoadLookup, formatLeg, isRoadRef, segmentsToText } from '../services/roadNaming.js';
 import { softCard, ghostButton, primaryButton, label } from './driveUi.js';
+
+/** Abbiegerichtung an der Wechselstelle. */
+function TurnIcon({ turn }) {
+  const size = 15;
+  if (turn === 'left') return <CornerUpLeft size={size} style={s.turn} aria-label="links" />;
+  if (turn === 'right') return <CornerUpRight size={size} style={s.turn} aria-label="rechts" />;
+  if (turn === 'around') return <RotateCcw size={size} style={s.turn} aria-label="wenden" />;
+  // Geradeaus bekommt keinen Pfeil — so stechen die echten Abbiegungen hervor
+  return <span style={{ width: size, flexShrink: 0 }} />;
+}
+
+/** Wartezeit in Worten — "1 Minuten" liest sich falsch. */
+function formatMinutes(seconds) {
+  if (seconds < 90) return 'gut eine Minute';
+  const minutes = Math.round(seconds / 60);
+  return `etwa ${minutes} Minuten`;
+}
 
 /**
  * Die gefahrene Strecke in Worten: welche Straße ab wo.
@@ -16,6 +33,7 @@ export default function RoadLog({ trip, onSave }) {
 
   const segments = trip.roadLog?.segments || null;
   const running = progress !== null;
+  const estimate = useMemo(() => estimateRoadLookup(trip.points), [trip.points]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
   // Wechsel auf eine andere Fahrt darf keine fremde Auswertung anzeigen
@@ -35,7 +53,13 @@ export default function RoadLog({ trip, onSave }) {
       if (result.segments.length === 0) {
         setError('Der Kartendienst hat keine Straßen zurückgegeben. Später noch einmal versuchen.');
       } else {
-        onSave(trip.id, { segments: result.segments, createdAt: Date.now(), failed: result.failed });
+        onSave(trip.id, {
+          segments: result.segments,
+          start: result.start,
+          end: result.end,
+          createdAt: Date.now(),
+          failed: result.failed,
+        });
       }
     } catch (err) {
       if (err?.name !== 'AbortError') {
@@ -54,7 +78,7 @@ export default function RoadLog({ trip, onSave }) {
 
   async function copyText() {
     try {
-      await navigator.clipboard.writeText(segmentsToText(segments));
+      await navigator.clipboard.writeText(segmentsToText(segments, trip.roadLog));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -69,22 +93,41 @@ export default function RoadLog({ trip, onSave }) {
         <span style={s.headText}>Strecke in Worten</span>
       </div>
 
+      {segments && trip.roadLog?.start?.address && (
+        <p style={s.endpoint}>
+          <span style={{ ...s.pin, background: '#16a34a' }} />
+          Start: <strong>{[trip.roadLog.start.address, trip.roadLog.start.place].filter(Boolean).join(', ')}</strong>
+        </p>
+      )}
+
       {segments && (
         <ol style={s.list}>
           {segments.map((segment, i) => (
             <li key={i} style={s.item}>
-              <span style={s.km}>km {segment.fromKm.toFixed(0)}</span>
+              <span style={s.km}>km {segment.fromKm.toFixed(segment.fromKm < 10 ? 1 : 0)}</span>
+              <TurnIcon turn={i === 0 ? null : segment.turn} />
               <span style={s.text}>
                 {i === 0
-                  ? <>Start auf der <strong>{segment.road}</strong></>
+                  ? <>Start: <strong>{segment.road}</strong></>
                   : segment.atPlace
-                    ? <>bei <strong>{segment.atPlace}</strong> auf die <strong>{segment.road}</strong></>
-                    : <>weiter auf der <strong>{segment.road}</strong></>}
-                <span style={s.len}> · {segment.lengthKm.toFixed(0)} km</span>
+                    ? <>
+                        bei <strong>{segment.atPlace}</strong>
+                        {isRoadRef(segment.road) ? ' auf die ' : ' über '}
+                        <strong>{segment.road}</strong>
+                      </>
+                    : <>weiter {isRoadRef(segment.road) ? 'auf der ' : 'über '}<strong>{segment.road}</strong></>}
+                <span style={s.len}> · {formatLeg(segment.lengthKm)}</span>
               </span>
             </li>
           ))}
         </ol>
+      )}
+
+      {segments && trip.roadLog?.end?.address && (
+        <p style={s.endpoint}>
+          <span style={{ ...s.pin, background: '#dc2626' }} />
+          Ziel: <strong>{[trip.roadLog.end.address, trip.roadLog.end.place].filter(Boolean).join(', ')}</strong>
+        </p>
       )}
 
       {segments && trip.roadLog?.failed > 0 && (
@@ -125,8 +168,8 @@ export default function RoadLog({ trip, onSave }) {
 
       {!segments && !running && (
         <p style={s.hint}>
-          Fragt für rund alle 3 km die Straße bei OpenStreetMap ab. Bei einer langen Fahrt dauert das
-          ein bis zwei Minuten und braucht Internet.
+          Fragt die Straße bei OpenStreetMap ab — im Ort engmaschig, auf der Autobahn grob.
+          Rund {estimate.requests} Abfragen, {formatMinutes(estimate.seconds)}. Braucht Internet.
         </p>
       )}
     </div>
@@ -138,10 +181,13 @@ const s = {
   head: { display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#1a2d42' },
   headText: { fontSize: '0.95rem', fontWeight: 600 },
   list: { listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.45rem' },
-  item: { display: 'flex', gap: '0.6rem', alignItems: 'baseline', fontSize: '0.88rem', lineHeight: 1.45 },
+  endpoint: { display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem', color: '#1a2d42' },
+  pin: { width: '9px', height: '9px', borderRadius: '50%', flexShrink: 0 },
+  item: { display: 'flex', gap: '0.5rem', alignItems: 'flex-start', fontSize: '0.88rem', lineHeight: 1.45 },
+  turn: { color: '#2563eb', flexShrink: 0, marginTop: '2px' },
   km: {
     fontSize: '0.72rem', fontWeight: 600, color: 'rgba(30,70,120,0.6)',
-    minWidth: '52px', flexShrink: 0, fontVariantNumeric: 'tabular-nums',
+    minWidth: '52px', flexShrink: 0, fontVariantNumeric: 'tabular-nums', marginTop: '3px',
   },
   text: { color: '#1a2d42' },
   len: { color: 'rgba(30,70,120,0.6)', fontSize: '0.8rem' },

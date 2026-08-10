@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, Download, ExternalLink, Trash2, Check, Pencil } from 'lucide-react';
+import { ChevronLeft, ChevronDown, Download, ExternalLink, Trash2, Check, Pencil, Map } from 'lucide-react';
 import RouteMap from './RouteMap.jsx';
 import RoadLog from './RoadLog.jsx';
 import {
@@ -11,6 +11,7 @@ import { softCard, ghostButton, dangerButton, label, value } from './driveUi.js'
 
 export default function TripDetail({ trip, onBack, onRename, onDelete, onSaveRoadLog }) {
   const [editing, setEditing] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const [draft, setDraft] = useState(trip.title || '');
 
   const st = tripStats(trip);
@@ -60,7 +61,13 @@ export default function TripDetail({ trip, onBack, onRename, onDelete, onSaveRoa
       )}
       <p style={s.subtitle}>{formatDateTime(trip.startedAt)} · {formatTime(trip.startedAt)}–{formatTime(trip.endedAt)}</p>
 
-      <RouteMap points={trip.points} height={300} />
+      {showMap
+        ? <RouteMap points={trip.points} height={300} />
+        : (
+          <button style={s.mapToggle} onClick={() => setShowMap(true)}>
+            <Map size={15} /> Karte anzeigen <ChevronDown size={14} />
+          </button>
+        )}
 
       <div style={s.grid}>
         <Stat label="Strecke" text={formatDistance(st.distance)} />
@@ -150,6 +157,11 @@ const s = {
     background: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.7)',
     borderRadius: '10px', padding: '0.5rem', cursor: 'pointer', color: '#1a2d42',
     display: 'inline-flex', alignItems: 'center', flexShrink: 0,
+  },
+  mapToggle: {
+    ...ghostButton,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+    padding: '0.6rem 1rem', fontSize: '0.85rem', width: '100%',
   },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.6rem' },
   stat: { ...softCard, display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.85rem 1rem' },
