@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, GitCompareArrows, Layers } from 'lucide-reac
 import RouteMap from './RouteMap.jsx';
 import { formatDistance, formatDuration, formatSpeed, formatDateTime, tripStats } from '../services/geoUtils.js';
 import { compareToReference, groupLabel, groupTrips, trackColor, DEVIATION_M } from '../services/routeGroups.js';
+import { compareRoadLogs, segmentsToChain } from '../services/roadNaming.js';
 import { softCard, ghostButton, label, value } from './driveUi.js';
 
 /**
@@ -72,6 +73,10 @@ function GroupDetail({ group, onBack }) {
       color: trackColor(i),
       stats: tripStats(trip),
       diff: trip.id === reference.id ? null : compareToReference(trip, reference),
+      roads: trip.roadLog?.segments || null,
+      roadDiff: trip.id === reference.id || !trip.roadLog || !reference.roadLog
+        ? null
+        : compareRoadLogs(reference.roadLog, trip.roadLog),
     })),
     [group.trips, reference]
   );
@@ -136,6 +141,19 @@ function GroupDetail({ group, onBack }) {
               />
               <Metric label="Ø Tempo" text={formatSpeed(r.stats.avgSpeed)} />
             </div>
+
+            {r.roads && (
+              <div style={s.roads}>
+                <span style={s.chain}>{segmentsToChain(r.roads)}</span>
+                {r.roadDiff && (r.roadDiff.onlyA.length > 0 || r.roadDiff.onlyB.length > 0) && (
+                  <span style={s.chainDiff}>
+                    {r.roadDiff.onlyB.length > 0 && <>nur hier: <strong>{r.roadDiff.onlyB.join(', ')}</strong></>}
+                    {r.roadDiff.onlyB.length > 0 && r.roadDiff.onlyA.length > 0 && ' · '}
+                    {r.roadDiff.onlyA.length > 0 && <>statt: <strong>{r.roadDiff.onlyA.join(', ')}</strong></>}
+                  </span>
+                )}
+              </div>
+            )}
 
             {r.diff && (
               <div style={s.diff}>
@@ -233,6 +251,12 @@ const s = {
   },
   rowStats: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' },
   metric: { display: 'flex', flexDirection: 'column', gap: '0.15rem' },
+  roads: {
+    display: 'flex', flexDirection: 'column', gap: '0.2rem',
+    borderTop: '1px solid rgba(30,80,140,0.12)', paddingTop: '0.5rem',
+  },
+  chain: { fontSize: '0.85rem', fontWeight: 600, color: '#1a2d42', lineHeight: 1.4 },
+  chainDiff: { fontSize: '0.78rem', color: 'rgba(30,60,100,0.75)', lineHeight: 1.4 },
   diff: {
     display: 'flex', flexDirection: 'column', gap: '0.3rem',
     borderTop: '1px solid rgba(30,80,140,0.12)', paddingTop: '0.55rem',

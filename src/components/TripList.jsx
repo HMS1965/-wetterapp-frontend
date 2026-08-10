@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { ChevronRight, Download, Route, Upload } from 'lucide-react';
 import RouteMap from './RouteMap.jsx';
 import { downloadFile, formatDistance, formatDuration, formatDateTime, tripStats } from '../services/geoUtils.js';
-import { exportAll, importAll } from '../services/tripStore.js';
+import { exportAll, importAll, saveTrip } from '../services/tripStore.js';
+import { parseGpx } from '../services/gpxImport.js';
 import { softCard, ghostButton, label, value } from './driveUi.js';
 
 function tripLabel(trip) {
@@ -21,18 +22,34 @@ export default function TripList({ trips, onOpen, onImported }) {
   }
 
   async function handleImport(e) {
-    const file = e.target.files?.[0];
+    const files = [...(e.target.files || [])];
     e.target.value = '';
-    if (!file) return;
-    try {
-      const result = importAll(await file.text());
-      setNote(result.added === 0
-        ? 'Alle Fahrten aus der Sicherung waren schon vorhanden.'
-        : `${result.added} ${result.added === 1 ? 'Fahrt' : 'Fahrten'} eingelesen.`);
-      onImported?.();
-    } catch (err) {
-      setNote(err.message);
+    if (files.length === 0) return;
+
+    let added = 0;
+    const problems = [];
+    for (const file of files) {
+      try {
+        const text = await file.text();
+        // GPX kommt von fremden Logger-Apps, JSON ist die eigene Sicherung
+        if (/\.gpx$/i.test(file.name) || text.trimStart().startsWith('<')) {
+          const trip = parseGpx(text, { fileName: file.name });
+          if (!saveTrip(trip)) throw new Error('Der Speicher reicht nicht.');
+          added++;
+        } else {
+          added += importAll(text).added;
+        }
+      } catch (err) {
+        problems.push(`${file.name}: ${err.message}`);
+      }
     }
+
+    if (added > 0) onImported?.();
+    setNote([
+      added > 0 ? `${added} ${added === 1 ? 'Fahrt' : 'Fahrten'} eingelesen.` : null,
+      added === 0 && problems.length === 0 ? 'Alles war schon vorhanden.' : null,
+      ...problems,
+    ].filter(Boolean).join(' '));
   }
 
   const backup = (
@@ -43,7 +60,7 @@ export default function TripList({ trips, onOpen, onImported }) {
       <button style={s.backupBtn} onClick={() => fileRef.current?.click()}>
         <Upload size={15} /> Einlesen
       </button>
-      <input ref={fileRef} type="file" accept="application/json,.json"
+      <input ref={fileRef} type="file" multiple accept=".json,.gpx,application/json,application/gpx+xml"
         onChange={handleImport} style={{ display: 'none' }} />
     </div>
   );
@@ -65,7 +82,7 @@ export default function TripList({ trips, onOpen, onImported }) {
   const total = trips.reduce(
     (acc, t) => {
       const st = tripStats(t);
-      return { distance: acc.distance + st.distance, duration: acc.duration + st.durationMs };
+      return { distance: acc.distance + st.distance, duration: acc.duration + (st.durationMs || 0) };
     },
     { distance: 0, duration: 0 }
   );
@@ -110,6 +127,7 @@ export default function TripList({ trips, onOpen, onImported }) {
       {note && <p style={s.note}>{note}</p>}
       <p style={s.backupHint}>
         Die Fahrten liegen nur in diesem Browser. Sichere sie, bevor du Browserdaten löschst oder das Gerät wechselst.
+        Über "Einlesen" kommen auch GPX-Dateien aus anderen Aufzeichnungs-Apps herein.
       </p>
     </div>
   );

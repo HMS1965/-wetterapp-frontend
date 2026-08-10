@@ -152,18 +152,25 @@ export function tripStats(trip) {
   const distance = trip?.distanceM ?? pathLength(points);
   const startedAt = trip?.startedAt ?? points[0]?.t ?? null;
   const endedAt = trip?.endedAt ?? points[points.length - 1]?.t ?? null;
-  const movingMs = trip?.movingMs ?? (startedAt && endedAt ? endedAt - startedAt : 0);
-  const avgSpeed = movingMs > 0 ? distance / (movingMs / 1000) : 0;
+  // Aus GPX ohne Zeitstempel importierte Fahrten haben keine belastbare Dauer
+  const movingMs = trip?.timesUnknown
+    ? null
+    : trip?.movingMs ?? (startedAt && endedAt ? endedAt - startedAt : 0);
+  const avgSpeed = movingMs == null ? null : movingMs > 0 ? distance / (movingMs / 1000) : 0;
 
-  let maxSpeed = trip?.maxSpeedMps ?? 0;
-  if (trip?.maxSpeedMps == null) {
+  // null heißt "nicht bestimmbar" — etwa bei importierten Spuren, deren Punkte
+  // zu weit auseinanderliegen. Dann ist "—" ehrlicher als "0 km/h".
+  let maxSpeed = trip?.maxSpeedMps ?? null;
+  if (trip?.timesUnknown) {
+    maxSpeed = null;
+  } else if (trip?.maxSpeedMps == null) {
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
       if (typeof p.speed === 'number' && p.speed >= 0) {
-        maxSpeed = Math.max(maxSpeed, p.speed);
+        maxSpeed = Math.max(maxSpeed ?? 0, p.speed);
       } else if (i > 0) {
         const speed = segmentSpeed(points[i - 1], p);
-        if (speed != null) maxSpeed = Math.max(maxSpeed, speed);
+        if (speed != null) maxSpeed = Math.max(maxSpeed ?? 0, speed);
       }
     }
   }
@@ -189,6 +196,7 @@ export function formatDistance(meters) {
 }
 
 export function formatDuration(ms) {
+  if (ms == null) return '—';
   const total = Math.max(0, Math.round((ms || 0) / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -198,7 +206,8 @@ export function formatDuration(ms) {
 }
 
 export function formatSpeed(mps) {
-  return `${Math.round((mps || 0) * 3.6)} km/h`;
+  if (mps == null) return '—';
+  return `${Math.round(mps * 3.6)} km/h`;
 }
 
 export function formatDateTime(ts) {

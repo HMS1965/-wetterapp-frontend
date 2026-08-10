@@ -5,7 +5,7 @@ import TripRecorder from './TripRecorder.jsx';
 import TripList from './TripList.jsx';
 import TripDetail from './TripDetail.jsx';
 import RouteCompare from './RouteCompare.jsx';
-import { deleteTrip, loadTrips, renameTrip } from '../services/tripStore.js';
+import { deleteTrip, loadTrips, renameTrip, saveRoadLog } from '../services/tripStore.js';
 import { glass, panel } from './driveUi.js';
 
 /** Fahrtenrekorder: zeichnet die gefahrene Strecke auf — ohne Navigation, ohne Routenplanung. */
@@ -30,6 +30,11 @@ export default function DriveApp({ onBack }) {
 
   function handleRename(id, title) {
     renameTrip(id, title);
+    refresh();
+  }
+
+  function handleRoadLog(id, roadLog) {
+    saveRoadLog(id, roadLog);
     refresh();
   }
 
@@ -82,7 +87,7 @@ export default function DriveApp({ onBack }) {
         {tab === 'record' && <TripRecorder recorder={recorder} onFinished={handleFinished} />}
         {tab === 'compare' && <RouteCompare trips={trips} />}
         {tab === 'trips' && (openTrip
-          ? <TripDetail trip={openTrip} onBack={() => setOpenId(null)} onRename={handleRename} onDelete={handleDelete} />
+          ? <TripDetail trip={openTrip} onBack={() => setOpenId(null)} onRename={handleRename} onDelete={handleDelete} onSaveRoadLog={handleRoadLog} />
           : <TripList trips={trips} onOpen={t => setOpenId(t.id)} onImported={refresh} />
         )}
       </div>

@@ -82,6 +82,15 @@ export function deleteTrip(id) {
   write(TRIPS_KEY, read(TRIPS_KEY, []).filter(t => t.id !== id));
 }
 
+/** Speichert das ausgewertete Straßenprotokoll an der Fahrt. */
+export function saveRoadLog(id, roadLog) {
+  const stored = read(TRIPS_KEY, []);
+  const trip = stored.find(t => t.id === id);
+  if (!trip) return false;
+  trip.roadLog = roadLog;
+  return write(TRIPS_KEY, stored);
+}
+
 export function renameTrip(id, title) {
   const stored = read(TRIPS_KEY, []);
   const trip = stored.find(t => t.id === id);

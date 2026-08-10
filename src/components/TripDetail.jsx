@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronLeft, Download, ExternalLink, Trash2, Check, Pencil } from 'lucide-react';
 import RouteMap from './RouteMap.jsx';
+import RoadLog from './RoadLog.jsx';
 import {
   downloadFile, formatCoords, formatDateTime, formatDistance,
   formatDuration, formatSpeed, formatTime, slugify, toGeoJson, toGpx, tripStats,
@@ -8,7 +9,7 @@ import {
 import { osmLink } from '../services/places.js';
 import { softCard, ghostButton, dangerButton, label, value } from './driveUi.js';
 
-export default function TripDetail({ trip, onBack, onRename, onDelete }) {
+export default function TripDetail({ trip, onBack, onRename, onDelete, onSaveRoadLog }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(trip.title || '');
 
@@ -67,6 +68,8 @@ export default function TripDetail({ trip, onBack, onRename, onDelete }) {
         <Stat label="Ø Tempo" text={formatSpeed(st.avgSpeed)} />
         <Stat label="Max. Tempo" text={formatSpeed(st.maxSpeed)} />
       </div>
+
+      <RoadLog trip={trip} onSave={onSaveRoadLog} />
 
       <div style={s.endpoints}>
         <Endpoint color="#16a34a" title="Start" name={trip.fromName} point={from} time={trip.startedAt} />

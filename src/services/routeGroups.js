@@ -39,7 +39,7 @@ export function groupTrips(trips) {
       const named = g.trips.find(t => t.fromName || t.toName) || g.trips[0];
       const stats = g.trips.map(t => tripStats(t));
       const distances = stats.map(s => s.distance);
-      const durations = stats.map(s => s.durationMs);
+      const durations = stats.map(s => s.durationMs).filter(d => d != null);
       return {
         id: g.trips[0].id,
         trips: g.trips.slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)),
@@ -48,8 +48,8 @@ export function groupTrips(trips) {
         count: g.trips.length,
         minDistance: Math.min(...distances),
         maxDistance: Math.max(...distances),
-        minDuration: Math.min(...durations),
-        maxDuration: Math.max(...durations),
+        minDuration: durations.length > 0 ? Math.min(...durations) : null,
+        maxDuration: durations.length > 0 ? Math.max(...durations) : null,
         lastDrivenAt: Math.max(...g.trips.map(t => t.startedAt || 0)),
       };
     })
